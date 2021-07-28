@@ -1,109 +1,130 @@
-import React, { Component, createRef } from 'react';
-import { Map, TileLayer, Marker, Popup, MapControl, withLeaflet } from 'react-leaflet';
-import { GeoSearchControl, OpenStreetMapProvider } from 'leaflet-geosearch';
+import { icon } from "leaflet";
+import React, { createRef, useEffect, useState } from "react";
+import {
+  Map,
+  Marker,
+  Polygon,
+  TileLayer,
+  Tooltip,
+} from "react-leaflet";
+import styled from "styled-components";
 
+const center = {
+  lat: 51.505,
+  lng: -0.09,
+};
 
-class SearchBox extends MapControl {
-  constructor(props) {
-    super(props);
-    props.leaflet.map.on('geosearch/showlocation', (e) => props.updateMarker(e));
-  }
+const Wrapper = styled.div`
+   .leaflet-bottom.leaflet-right {
+    display: none;
+  } 
+`;
 
-  createLeafletElement() {
-    const searchEl = GeoSearchControl({
-      provider: new OpenStreetMapProvider(),
-      style: 'bar',
-      showMarker: true,
-      showPopup: false,
-      autoClose: true,
-      retainZoomLevel: false,
-      animateZoom: true,
-      keepResult: false,
-      searchLabel: 'search'
-    });
-    return searchEl;
-  }
-}
+export default function MyMap() {
+  const [data, setData] = useState([]);
+  const [markers, setMarkers] = useState([
+    center,
+    { lat: center.lat + 0.03, lng: center.lng - 0.03 },
+    { lat: center.lat + 0.03, lng: center.lng + 0.03 },
+  ]);
+  // const [refMarkers, setRefMarkers] = useState(markers.map(createRef));
+  // create array of ref markers
+  const [refMarkers, setRefMarkers] = useState(
+    markers.map((marker) => {
+      return createRef(marker);
+    })
+  );
+  const [zoom, setZoom] = useState(13);
+  const position = [center.lat, center.lng];
+  // when adding marker to polygon handleAdd gets called
+  const handleAdd = ({ latlng }) => {
+    const newVal = latlng;
+    setMarkers((a) => [...a, newVal]);  // add new marker to array (for polygon)
+    setRefMarkers((a) => [...a, createRef(newVal)]);    // add ref of marker to array
+  };
+  // when markers changed this is called
+  useEffect(() => {
+    fetch("https://livevehicle.pubggamer1.repl.co/", {
+      body: JSON.stringify({ markers }),
+      method: "post",//
+      headers: { "Content-Type": "application/json" },
+    }).then((a) => a.json().then(setData)); // https request to get json then set data
+  }, [markers]);// listen to markers changes
 
+  return (
+    <Wrapper className="map-root">
+      <div style={{gridTemplateColumns: 'auto 18%', display: 'grid'}} className="vehicle-list">
+      <Map
+        onClick={handleAdd} // call when click
+        center={position}
+        zoom={zoom}
+        style={{height: "90vh"}}
+        onZoom={({ target }) => setZoom(target.zoom)}> // when zoom changes update zoom with target.zoom
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        {data.map((a, i) => {
+          return (
+              // for each car(within polygon) create marker
+            <Marker
+              position={a.location}
+              key={i}
+              icon={icon({
+                iconUrl: `https://img.icons8.com/color/50/000000/${
+                  a.class.name === "D" ? "car" : "truck"
+                }-top-view.png`,
+                iconSize: "30",
 
-export default class MyMap extends Component {
-  state = {
-    center: {
-      lat: 31.698956,
-      lng: 76.732407,
-    },
-    marker: {
-      lat: 31.698956,
-      lng: 76.732407,
-    },
-    zoom: 13,
-    draggable: true,
-  }
-
-  refmarker = createRef(this.state.marker)
-
-  toggleDraggable = () => {
-    this.setState({ draggable: !this.state.draggable });
-  }
-
-  updateMarker = (e) => {
-    // const marker = e.marker;
-    this.setState({
-      marker: e.marker.getLatLng(),
-    });
-    console.log(e.marker.getLatLng());
-  }
-
-  updatePosition = () => {
-    const marker = this.refmarker.current;
-    if (marker != null) {
-      this.setState({
-        marker: marker.leafletElement.getLatLng(),
-      });
-    }
-    console.log(marker.leafletElement.getLatLng());
-  }
-
-  render() {
-    const position = [this.state.center.lat, this.state.center.lng];
-    const markerPosition = [this.state.marker.lat, this.state.marker.lng];
-    const SearchBar = withLeaflet(SearchBox);
-
-    return (
-      <div className="map-root">
-        <Map center={position} zoom={this.state.zoom} style={{
-                        height:"700px"
-                    }}>
-          <TileLayer
-            attribution='&amp;copy <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+              })}
+            >
+              <Tooltip direction="top">{a.id}</Tooltip>
+            </Marker>
+          );
+        })}
+        <Polygon pathOptions={{ color: "purple" }} positions={markers} />
+        {markers.map((position, i) => (
           <Marker
-            draggable={true}
-            onDragend={this.updatePosition}
-            position={markerPosition}
-            animate={true}
-            ref={this.refmarker}>
-            <Popup minWidth={90}>
-              <span onClick={this.toggleDraggable}>
-                {this.state.draggable ? 'DRAG MARKER' : 'MARKER FIXED'}
-              </span>
-            </Popup>
-          </Marker>
-          <SearchBar updateMarker={this.updateMarker} />
-        </Map>
-        <style jsx>{`
-                .map-root {
-                  height: 100%;
-                }
-                .leaflet-container {
-                 height: 400px !important;
-                 width: 80%;
-                 margin: 0 auto;
-               }
-           `}
-        </style>
+            onClick={() => {
+                const newMarkers = [...markers];
+                if (newMarkers.length < 4) return;  // there must be at least 3 markers (polygon has 3 or more sides)
+                newMarkers.splice(i, 1);
+                setMarkers(newMarkers);
+            }}
+            key={i}
+            onDragend={() => {
+              const newMarkers = [...markers];
+              newMarkers[i] = refMarkers[i].current.leafletElement.getLatLng();
+              setMarkers(newMarkers);
+            }}
+            draggable
+            position={position}
+            animate
+            ref={refMarkers[i]}
+          />
+        ))}
+      </Map>
+      {/* vehicle id list ui */}
+        <table style={{overflowY: 'scroll', height: "90vh", display: 'block',  border: '3px solid black', padding: '10px'}}>
+            <thead>
+                <tr>
+                    <th>
+                        <p style={{fontSize: '2rem', marginBottom: '0', marginTop: '15px'}}>Vehicle ID list</p>
+                        <p style={{fontSize: '1rem', marginTop: '0'}}>selected vehicles: {data.length}</p>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {data.map((a, i) => {
+                  return (
+                    <tr key={i}>
+                        <td style={{backgroundColor: '#c9fbff', padding: '8px', margin: '4px 0 4px 0'}}>
+                          {a.id}
+                        </td>
+                    </tr>
+                )
+              })}
+            </tbody>
+              
+        </table>
       </div>
-    );
-  }
+    </Wrapper>
+  );
 }

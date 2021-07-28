@@ -1,20 +1,21 @@
 import React from 'react'
 import Head from '../components/head'
-import Nav from '../components/nav'
 
 import dynamic from 'next/dynamic';
+
 
 const MapWithNoSSR = dynamic(() => import('../components/map'), {
   ssr: false
 });
 
+
 const Home = () => (
-  <div>
-    <Head title="Home" />
-    <Nav />
+    // 
+  <div style={{height: '100vh'}}> 
+    <Head title="Live Vehicle Map" />
 
     <div>
-     <MapWithNoSSR />
+      <MapWithNoSSR />
     </div>
   </div>
 )
